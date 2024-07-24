@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<head>
+<title>COVID-19 in the U.S.: remembering the bad days</title>
+</head>
+<h1>COVID-19 in the U.S.: remembering the bad days</h1>
+<p id="description">Finally let's visualize the cumulative death rate (deaths/cases), and we can see that the death rate was almost the highest on that day (except the spike at the very beginning when sample sizes were small).
+This is a reminder of the dark pandemic phase of COVID-19 that we should not forget.</p>
+<p><i>Hover on the chart to see the data points.</i></p>
+<h3 id="graphTitle">Cumulative death rate (percentage)</h3>
+<div id="container"></div>
+<div id="buttonContainer">
+    <button onclick="location.href='index.html?log'">Prev</button>
+</div>
+<p>Data source: <a href="https://github.com/nytimes/covid-19-data?tab=readme-ov-file#us-national-level-data" target="_blank">New York Times</a></p>
+<script src="https://d3js.org/d3.v6.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3-annotation/2.5.1/d3-annotation.min.js" integrity="sha512-iBAeBWWWFb8HqSBcrqcz98iIpuVH1la39dEYHtyQ/pGpeCQTQVvLJOWAuhv2Q7JSHp9k7hWA7sGxU3hHJe+tFg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script type="module">
+const data = await d3.csv("https://raw.githubusercontent.com/nytimes/covid-19-data/master/us.csv", d => {
+    return {
+        date: new Date(d.date),
+        cases: +d.cases,
+        deaths: +d.deaths,
+        death_rate: d.cases == 0 ? 0 : d.deaths/d.cases*100,
+    };
+});
+
+// Declare the chart dimensions and margins.
+const width = 900;
+const height = 500;
+const marginTop = 20;
+const marginRight = 100;
+const marginBottom = 30;
+const marginLeft = 50;
+
+// Declare the x (horizontal position) scale.
+const x = d3.scaleUtc()
+    .domain(d3.extent(data, d => d.date))
+    .range([marginLeft, width - marginRight]);
+
+// Declare the y (vertical position) scale.
+// d3.max(data, d => d.cases) ~= 100M; leave some margin for tooltip.
+const y = d3.scaleLinear()
+    .domain([0, 10])
+    .range([height - marginBottom, marginTop]);
+
+// Declare the line generators.
+const death_rate_line = d3.line()
+    .x(d => x(d.date))
+    .y(d => y(d.death_rate));
+
+// Create the SVG container.
+const svg = d3.create("svg")
+    .attr("width", width)
+    .attr("height", height);
+
+// Add the x-axis.
+svg.append("g")
+    .attr("transform", `translate(0,${height - marginBottom})`)
+    .call(d3.axisBottom(x));
+
+// Add the y-axis.
+svg.append("g")
+    .attr("transform", `translate(${marginLeft},0)`)
+    .call(d3.axisLeft(y).ticks(10, ".2s"));
+
+// Append a path for the death_rate line.
+svg.append("path")
+    .attr("fill", "none")
+    .attr("stroke", "red")
+    .attr("stroke-width", 1.5)
+    .attr("d", death_rate_line(data));
+
+// Add an invisible layer for the interactive tip.
+const dot = svg.append("g")
+    .attr("display", "none");
+
+dot.append("circle")
+    .attr("r", 2.5);
+
+dot.append("text")
+    .attr("text-anchor", "middle")
+    .attr("y", -8);
+
+// Compute the points in pixel space as [x, y, z], where z is the name of the series.
+const points = data.map(d => [d.date, d.death_rate])
+console.log(points);
+
+// When the pointer moves, find the closest point, update the interactive tip, and highlight
+// the corresponding line.
+function pointermoved(event) {
+    const [xm, ym] = d3.pointer(event);
+    const i = d3.leastIndex(points, ([xx, yy]) => Math.hypot(x(xx) - xm, y(yy) - ym));
+    const [date, rate] = points[i];
+    //path.style("stroke", ({z}) => z === k ? null : "#ddd").filter(({z}) => z === k).raise();
+    dot.attr("transform", `translate(${x(date)},${y(rate)})`);
+    dot.select("text").text(`${rate.toFixed(1)}% on ${date.toLocaleDateString()}`);
+    //svg.property("value", unemployment[i]).dispatch("input", {bubbles: true});
+}
+
+function pointerentered() {
+    //path.style("mix-blend-mode", null).style("stroke", "#ddd");
+    dot.attr("display", null);
+}
+
+function pointerleft() {
+    //path.style("mix-blend-mode", "multiply").style("stroke", null);
+    dot.attr("display", "none");
+    //svg.node().value = null;
+    //svg.dispatch("input", {bubbles: true});
+}
+
+svg
+    .on("pointerenter", pointerentered)
+    .on("pointermove", pointermoved)
+    .on("pointerleave", pointerleft)
+    .on("touchstart", event => event.preventDefault());
+
+// Append the SVG element.
+container.append(svg.node());
+
+// Annotations
+const annotations = [{
+  note: {
+    label: "Almost the highest death rate" ,
+    bgPadding: 20,
+    title: "May 1, 2020"
+  },
+  //can use x, y directly instead of data
+  data: { date: new Date("2020-05-01"), death_rate: 5.9 },
+  className: "show-bg",
+  dy: -50,
+  dx: 50
+}]
+
+const timeFormat = d3.timeFormat("%d-%b-%y");
+
+const makeAnnotations = d3.annotation()
+  .editMode(true)
+  //also can set and override in the note.padding property
+  //of the annotation object
+  .notePadding(15)
+  .type(d3.annotationLabel)
+  //accessors & accessorsInverse not needed
+  //if using x, y in annotations JSON
+  .accessors({
+    x: d => x(d.date),
+    y: d => y(d.death_rate)
+  })
+  .accessorsInverse({
+     date: d => timeFormat(x.invert(d.x)),
+     close: d => y.invert(d.y)
+  })
+  .annotations(annotations);
+
+d3.select("svg")
+  .append("g")
+  .attr("class", "annotation-group")
+  .call(makeAnnotations);
+</script>

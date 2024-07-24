@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<head>
+<title>COVID-19 in the U.S.: remembering the bad days</title>
+</head>
+<h1>COVID-19 in the U.S.: remembering the bad days</h1>
+<p id="description"></p>
+<p><i>Hover on the chart to see the data points.</i></p>
+<h3 id="graphTitle">Cumulative <span style="color:steelblue">cases</span> and <span style="color:red">deaths</span></h3>
+<div id="container"></div>
+<div id="buttonContainer"></div>
+<p>Data source: <a href="https://github.com/nytimes/covid-19-data?tab=readme-ov-file#us-national-level-data" target="_blank">New York Times</a></p>
+<script src="https://d3js.org/d3.v6.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3-annotation/2.5.1/d3-annotation.min.js" integrity="sha512-iBAeBWWWFb8HqSBcrqcz98iIpuVH1la39dEYHtyQ/pGpeCQTQVvLJOWAuhv2Q7JSHp9k7hWA7sGxU3hHJe+tFg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script type="module">
+const logScale = location.search == "?log";
+description.innerHTML = logScale ?
+`Now let's change the Y-axis from linear scale to log scale, which makes two things obvious: the exponential growth, and, more importantly, the high R<sub>0</sub>
+(<a href="https://en.wikipedia.org/wiki/Mathematical_modelling_of_infectious_diseases#Reproduction_number" target="_blank">reproduction number</a>, the slope in the chart) in the early days.` :
+`Sometimes, graphs can hide important details. Now that COVID-19 has become endemic, it is easy to overlook how bad the early days were when looking at a graph like below. Let's use May 1, 2020 as an example.`;
+graphTitle.innerHTML += logScale ? " (log scale)" : " (linear scale)";
+buttonContainer.innerHTML = logScale ?
+`<button onclick="location.search=''">Prev</button>&nbsp;<button onclick="location.href='rate.html'">Next</button>` :
+`<button onclick="location.search='?log'">Next</button>`;
+
+const data = await d3.csv("https://raw.githubusercontent.com/nytimes/covid-19-data/master/us.csv", d => {
+    return {
+        date: new Date(d.date),
+        cases: +d.cases,
+        deaths: +d.deaths,
+        death_rate: d.cases == 0 ? 0 : d.deaths/d.cases,
+    };
+});
+
+// Declare the chart dimensions and margins.
+const width = 900;
+const height = 500;
+const marginTop = 20;
+const marginRight = 100;
+const marginBottom = 30;
+const marginLeft = 50;
+
+// Declare the x (horizontal position) scale.
+const x = d3.scaleUtc()
+    .domain(d3.extent(data, d => d.date))
+    .range([marginLeft, width - marginRight]);
+
+// Declare the y (vertical position) scale.
+// d3.max(data, d => d.cases) ~= 100M; leave some margin for tooltip.
+const y = logScale ? d3.scaleLog()
+        .domain([1, 1.1e8])
+        .range([height - marginBottom, marginTop])
+    : d3.scaleLinear()
+        .domain([0, 1.1e8])
+        .range([height - marginBottom, marginTop]);
+
+// Declare the line generators.
+const cases_line = d3.line()
+    .x(d => x(d.date))
+    .y(d => y(d.cases));
+const deaths_line = d3.line()
+    .x(d => x(d.date))
+    .y(d => y(d.deaths+1));
+
+// Create the SVG container.
+const svg = d3.create("svg")
+    .attr("width", width)
+    .attr("height", height);
+
+// Add the x-axis.
+svg.append("g")
+    .attr("transform", `translate(0,${height - marginBottom})`)
+    .call(d3.axisBottom(x));
+
+// Add the y-axis.
+svg.append("g")
+    .attr("transform", `translate(${marginLeft},0)`)
+    .call(d3.axisLeft(y).ticks(10, ".2s"));
+
+// Append a path for the cases line.
+svg.append("path")
+    .attr("fill", "none")
+    .attr("stroke", "steelblue")
+    .attr("stroke-width", 1.5)
+    .attr("d", cases_line(data));
+
+// Append a path for the deaths line.
+svg.append("path")
+    .attr("fill", "none")
+    .attr("stroke", "red")
+    .attr("stroke-width", 1.5)
+    .attr("d", deaths_line(data));
+
+// Add an invisible layer for the interactive tip.
+const dot = svg.append("g")
+    .attr("display", "none");
+
+dot.append("circle")
+    .attr("r", 2.5);
+
+dot.append("text")
+    .attr("text-anchor", "middle")
+    .attr("y", -8);
+
+// Compute the points in pixel space as [x, y, z], where z is the name of the series.
+const points = data.flatMap(d => [[d.date, d.cases, "Cases"], [d.date, d.deaths, "Deaths"]])
+console.log(points);
+
+// When the pointer moves, find the closest point, update the interactive tip, and highlight
+// the corresponding line.
+function pointermoved(event) {
+    const [xm, ym] = d3.pointer(event);
+    const i = d3.leastIndex(points, ([xx, yy]) => Math.hypot(x(xx) - xm, y(yy) - ym));
+    const [date, num, type] = points[i];
+    //path.style("stroke", ({z}) => z === k ? null : "#ddd").filter(({z}) => z === k).raise();
+    dot.attr("transform", `translate(${x(date)},${y(num)})`);
+    dot.select("text").text(`${num} ${type} on ${date.toLocaleDateString()}`);
+    //svg.property("value", unemployment[i]).dispatch("input", {bubbles: true});
+}
+
+function pointerentered() {
+    //path.style("mix-blend-mode", null).style("stroke", "#ddd");
+    dot.attr("display", null);
+}
+
+function pointerleft() {
+    //path.style("mix-blend-mode", "multiply").style("stroke", null);
+    dot.attr("display", "none");
+    //svg.node().value = null;
+    //svg.dispatch("input", {bubbles: true});
+}
+
+svg
+    .on("pointerenter", pointerentered)
+    .on("pointermove", pointermoved)
+    .on("pointerleave", pointerleft)
+    .on("touchstart", event => event.preventDefault());
+
+// Append the SVG element.
+container.append(svg.node());
+
+// Annotations
+const annotations = [{
+  note: {
+    label: logScale ? "What about now?" : "Did the situation look dire on that day?" ,
+    bgPadding: 20,
+    title: "May 1, 2020"
+  },
+  //can use x, y directly instead of data
+  data: { date: new Date("2020-05-01"), cases: 1000000 },
+  className: "show-bg",
+  dy: logScale ? -50 : -100,
+  dx: logScale ? 0 : 100
+}]
+
+const timeFormat = d3.timeFormat("%d-%b-%y");
+
+const makeAnnotations = d3.annotation()
+  .editMode(true)
+  //also can set and override in the note.padding property
+  //of the annotation object
+  .notePadding(15)
+  .type(d3.annotationLabel)
+  //accessors & accessorsInverse not needed
+  //if using x, y in annotations JSON
+  .accessors({
+    x: d => x(d.date),
+    y: d => y(d.cases)
+  })
+  .accessorsInverse({
+     date: d => timeFormat(x.invert(d.x)),
+     close: d => y.invert(d.y)
+  })
+  .annotations(annotations);
+
+d3.select("svg")
+  .append("g")
+  .attr("class", "annotation-group")
+  .call(makeAnnotations);
+
+</script>
